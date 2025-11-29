@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="darkreader-lock" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Tabula</title>
+	<meta property="og:title" content="Tabula" />
+	<meta property="og:description" content="An autonomous frontend AI controller." />
+	<meta property="og:image" content="https://repository-images.githubusercontent.com/862251163/0ac90205-ae40-4fc6-af67-1e28d074c76b" />
+	<script type="module" src="https://cdn.jsdelivr.net/gh/steve02081504/js-polyfill@master/index.mjs"></script>
+	<style>
+		:root {
+			--bg: #1e1e1e;
+			--fg: #d4d4d4;
+			--accent: #007acc;
+			--accent-hover: #0062a3;
+			--border: #333;
+			--input-bg: #3c3c3c;
+			--error: #f48771;
+			--success: #89d185;
+		}
+
+		body {
+			margin: 0;
+			padding: 0;
+			background: var(--bg);
+			color: var(--fg);
+			font-family: 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', monospace;
+			height: 100vh;
+			overflow: auto;
+		}
+
+		/* 通用加载动画 */
+		.spinner {
+			width: 24px;
+			height: 24px;
+			border: 3px solid rgba(255, 255, 255, 0.1);
+			border-radius: 50%;
+			border-top-color: var(--accent);
+			animation: spin 1s ease-in-out infinite;
+			display: inline-block;
+			vertical-align: middle;
+			margin-right: 10px;
+		}
+
+		@keyframes spin {
+			to {
+				transform: rotate(360deg);
+			}
+		}
+
+		/* 配置面板 */
+		#config-panel {
+			position: fixed;
+			inset: 0;
+			background: rgba(0, 0, 0, 0.85);
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			z-index: 9999;
+			backdrop-filter: blur(8px);
+			transition: opacity 0.4s ease, visibility 0.4s;
+		}
+
+		.card {
+			background: #252526;
+			padding: 2.5rem;
+			border: 1px solid var(--border);
+			border-radius: 12px;
+			width: 420px;
+			max-width: 90%;
+			box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+			display: flex;
+			flex-direction: column;
+			gap: 16px;
+		}
+
+		h2 {
+			margin: 0 0 1rem 0;
+			font-weight: 300;
+			letter-spacing: 3px;
+			text-transform: uppercase;
+			color: #fff;
+			text-align: center;
+		}
+
+		.input-group {
+			display: flex;
+			flex-direction: column;
+			gap: 6px;
+		}
+
+		label {
+			font-size: 11px;
+			color: #aaa;
+			text-transform: uppercase;
+			font-weight: 600;
+			letter-spacing: 0.5px;
+		}
+
+		input,
+		select,
+		button,
+		textarea {
+			width: 100%;
+			padding: 10px 12px;
+			background: var(--input-bg);
+			border: 1px solid var(--border);
+			color: white;
+			border-radius: 6px;
+			box-sizing: border-box;
+			font-family: inherit;
+			font-size: 14px;
+			outline: none;
+			transition: border-color 0.2s, background 0.2s;
+		}
+
+		textarea#prompt {
+			min-height: 100px;
+			/* Minimum height for the prompt textarea */
+			resize: vertical;
+			/* Allow vertical resizing only */
+			line-height: 1.5;
+			/* Improve readability */
+		}
+
+		input:focus,
+		select:focus,
+		textarea:focus {
+			border-color: var(--accent);
+			background: #444;
+		}
+
+		.row {
+			display: flex;
+			gap: 12px;
+		}
+
+		.row>* {
+			flex: 1;
+		}
+
+		button {
+			background: var(--accent);
+			cursor: pointer;
+			font-weight: 600;
+			border: none;
+			margin-top: 16px;
+			padding: 12px;
+			letter-spacing: 0.5px;
+		}
+
+		button:hover {
+			background: var(--accent-hover);
+		}
+
+		button:disabled {
+			background: #444;
+			cursor: not-allowed;
+			opacity: 0.7;
+		}
+
+		/* 状态提示 Toast */
+		#status-toast {
+			position: fixed;
+			top: 24px;
+			right: 24px;
+			background: #2d2d2d;
+			border-left: 4px solid var(--accent);
+			padding: 12px 20px;
+			border-radius: 4px;
+			font-size: 13px;
+			display: none;
+			z-index: 10000;
+			box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+			animation: slideIn 0.3s ease-out;
+		}
+
+		@keyframes slideIn {
+			from {
+				transform: translateX(100%);
+				opacity: 0;
+			}
+
+			to {
+				transform: translateX(0);
+				opacity: 1;
+			}
+		}
+
+		.status-error {
+			border-color: var(--error) !important;
+			color: #ffcccc;
+		}
+
+		.status-info {
+			border-color: var(--accent) !important;
+			color: #fff;
+		}
+
+		/* 初始加载界面 */
+		.loading-screen {
+			display: flex;
+			flex-direction: column;
+			height: 100vh;
+			justify-content: center;
+			align-items: center;
+			color: var(--fg);
+			gap: 15px;
+		}
+	</style>
+</head>
+
+<body>
+
+	<!-- 状态提示 -->
+	<div id="status-toast"></div>
+
+	<!-- 配置层 -->
+	<div id="config-panel">
+		<div class="card">
+			<h2>Tabula</h2>
+
+			<div class="row">
+				<div class="input-group">
+					<label>Preset</label>
+					<select id="presetSelect">
+						<option value="custom">Custom</option>
+						<option value="fount">fount</option>
+						<option value="openai">OpenAI</option>
+						<option value="gemini">Google Gemini</option>
+						<option value="deepseek">DeepSeek</option>
+						<option value="groq">Groq</option>
+						<option value="openrouter">OpenRouter</option>
+					</select>
+				</div>
+				<div class="input-group">
+					<label>API Format</label>
+					<select id="apiFormat">
+						<option value="openai">OpenAI Compatible</option>
+						<option value="gemini">Gemini Native</option>
+					</select>
+				</div>
+			</div>
+
+			<div class="input-group">
+				<label>Base URL</label>
+				<input type="text" id="baseUrl" placeholder="https://api.openai.com/v1">
+			</div>
+
+			<div class="input-group">
+				<label>API Key</label>
+				<input type="password" id="apiKey" placeholder="sk-...">
+			</div>
+
+			<div class="input-group">
+				<label>Model Name</label>
+				<input type="text" id="modelName" placeholder="gpt-4o / gemini-1.5-flash">
+			</div>
+
+			<div class="input-group">
+				<label>Instruction</label>
+				<textarea id="prompt" placeholder="Describe your want..." rows="3">Draw a fantasy style text rpg web page game.</textarea>
+			</div>
+
+			<button id="startBtn">Initialize Environment</button>
+			<div style="text-align: center; margin-top: 15px; font-size: 12px; color: #666;">
+				Made by steve02081504 with <a href="https://github.com/steve02081504/fount" target="_blank" style="color: #666; text-decoration: none; border-bottom: 1px dotted #666;">fount</a>
+			</div>
+		</div>
+	</div>
+
+	<!-- 脚本逻辑 -->
+	<script type="module">
+		import { async_eval } from 'https://esm.sh/@steve02081504/async-eval'
+
+		// 预设配置
+		const PRESETS = {
+			fount: { url: (localStorage.getItem('fountHostUrl') || 'http://localhost:8931') + '/api/shells/proxy/calling/openai/v1', format: 'openai', model: 'default' },
+			gemini: { url: 'https://generativelanguage.googleapis.com/v1beta', format: 'gemini', model: 'gemini-flash-latest' },
+			deepseek: { url: 'https://api.deepseek.com', format: 'openai', model: 'deepseek-chat' },
+			openai: { url: 'https://api.openai.com/v1', format: 'openai', model: 'gpt-4o' },
+			groq: { url: 'https://api.groq.com/openai/v1', format: 'openai', model: 'llama-3.3-70b-versatile' },
+			openrouter: { url: 'https://openrouter.ai/api/v1', format: 'openai', model: 'openai/gpt-4o-mini' },
+		}
+
+		const state = {
+			config: {},
+			history: [],
+			busy: false
+		}
+
+		const els = {
+			panel: document.getElementById('config-panel'),
+			btn: document.getElementById('startBtn'),
+			toast: document.getElementById('status-toast'),
+			inputs: {
+				preset: document.getElementById('presetSelect'),
+				format: document.getElementById('apiFormat'),
+				url: document.getElementById('baseUrl'),
+				key: document.getElementById('apiKey'),
+				model: document.getElementById('modelName'),
+				prompt: document.getElementById('prompt')
+			}
+		}
+
+		// --- 初始化 & 持久化 ---
+
+		/**
+		 * 从 localStorage 加载配置并更新输入框的值。
+		 */
+		function loadConfig() {
+			try {
+				const saved = JSON.parse(localStorage.getItem('tabula_config') || '{}')
+				const { url, key, model, format, preset } = saved
+				if (url) els.inputs.url.value = url
+				if (key) els.inputs.key.value = key
+				if (model) els.inputs.model.value = model
+				if (format) els.inputs.format.value = format
+				if (preset) els.inputs.preset.value = preset
+			} catch (e) {
+				console.warn('Failed to load config', e)
+			}
+		}
+
+		/**
+		 * 将当前配置保存到 localStorage。
+		 * @returns {object} 当前的配置对象。
+		 */
+		function saveConfig() {
+			const config = {
+				url: els.inputs.url.value.trim(),
+				key: els.inputs.key.value.trim(),
+				model: els.inputs.model.value.trim(),
+				format: els.inputs.format.value,
+				preset: els.inputs.preset.value
+			}
+			localStorage.setItem('tabula_config', JSON.stringify(config))
+			return config
+		}
+
+		els.inputs.preset.addEventListener('change', (e) => {
+			const { value: val } = e.target
+			if (PRESETS[val]) {
+				const { url, format, model } = PRESETS[val]
+				els.inputs.url.value = url
+				els.inputs.format.value = format
+				els.inputs.model.value = model
+			}
+		})
+
+		// 添加 textarea 键盘事件
+		els.inputs.prompt.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter' && e.ctrlKey) {
+				e.preventDefault()
+				els.btn.click()
+			}
+		})
+
+		loadConfig()
+
+		// --- 系统提示词 ---
+
+		const SYSTEM_PROMPT = `\
+You are Tabula, an autonomous frontend AI controller.
+You have FULL access to the DOM.
+
+### PROTOCOL
+1. <render-html>HTML_CONTENT</render-html>
+	- COMPLETELY replaces document.body.innerHTML.
+	- You can include <style> block for CSS or <script> block for JS.
+	- Always rewrite the full UI state, do not rely on previous elements existing.
+
+2. <execute-js>JS_CODE</execute-js>
+	- Runs async javascript on current page.
+	- Use 'trigger(data)' to send events back to the AI (yourself).
+
+### LANGUAGE ADAPTATION
+- **CRITICAL:** Analyze the language of the user's initial prompt (e.g., English, Chinese, Japanese).
+- Render ALL user interface text (buttons, placeholders, labels) in that detected language.
+- If the user writes in Chinese, the UI MUST be in Chinese.
+
+### UX GUIDELINES
+- Before long operations (network/calculations), render a "Loading/Processing" state.
+- Create modern, clean, responsive interfaces (dark mode preferred by default).
+
+### OUTPUT FORMAT
+Output RAW XML only. No markdown fences.
+`
+
+		// --- 主逻辑 ---
+
+		els.btn.addEventListener('click', async () => {
+			const cfg = saveConfig()
+			if (!cfg.url || !cfg.key) {
+				showToast('Please enter API URL and Key', true)
+				return
+			}
+
+			state.config = cfg
+			state.history = [
+				{ role: 'system', content: SYSTEM_PROMPT },
+				{ role: 'user', content: els.inputs.prompt.value }
+			]
+
+			// UI 切换到初始化状态
+			els.panel.style.opacity = '0'
+			els.panel.style.visibility = 'hidden'
+
+			// 渲染美观的等待界面
+			document.body.innerHTML = `\
+<div class="loading-screen">
+	<div class="spinner"></div>
+	<div style="font-family:monospace; opacity:0.7;">Tabula is thinking...</div>
+</div>
+`
+
+			await runLoop()
+		})
+
+		/**
+		 * 主循环，负责获取用户输入、调用 AI、然后解析并执行 AI 的响应。
+		 * 它会持续运行，直到用户消息处理完毕。
+		 */
+		async function runLoop() {
+			if (state.busy) return
+			state.busy = true
+			showToast('AI Processing...', false)
+
+			try {
+				while (state.history.length > 0 && state.history[state.history.length - 1].role === 'user') {
+					const responseContent = await fetchWithRetry()
+
+					state.history.push({ role: 'assistant', content: responseContent })
+					console.log('AI Response:', responseContent)
+
+					showToast('Rendering...', false)
+					await parseAndExecute(responseContent)
+				}
+				hideToast()
+
+			} catch (e) {
+				console.error(e)
+				showToast(`Error: ${e.message}. Retrying in 5s...`, true)
+				// 自动重试机制
+				setTimeout(() => {
+					state.busy = false
+					runLoop()
+				}, 5000)
+			} finally {
+				state.busy = false
+			}
+		}
+
+		/**
+		 * 使用 fetch-with-retry 逻辑从 AI API 获取响应。
+		 * 它会根据配置自动处理 OpenAI 和 Gemini 两种格式。
+		 * @returns {Promise<string>} AI 返回的消息内容。
+		 */
+		async function fetchWithRetry() {
+			const { url, key, model, format } = state.config
+
+			// 简单的 System Prompt 处理策略
+			const sysPrompt = state.history.find(m => m.role === 'system')?.content || ''
+			const msgs = state.history.filter(m => m.role !== 'system')
+
+			const headers = {
+				'Content-Type': 'application/json'
+			}
+
+			if (url.includes('openrouter.ai')) {
+				headers['HTTP-Referer'] = 'https://steve02081504.github.io/Tabula'
+				headers['X-Title'] = 'Tabula'
+			}
+
+			if (format === 'gemini') {
+				const endpoint = `${url}/models/${model}:generateContent?key=${key}`
+
+				// Gemini 格式构建
+				const contents = msgs.map(m => ({
+					role: m.role === 'assistant' ? 'model' : 'user',
+					parts: [{ text: m.content }]
+				}))
+
+				const body = { contents }
+				if (sysPrompt)
+					body.system_instruction = {
+						parts: [{ text: sysPrompt }]
+					}
+
+				const res = await fetch(endpoint, {
+					method: 'POST',
+					headers,
+					body: JSON.stringify(body)
+				})
+
+				if (!res.ok) throw new Error(`Gemini API Error: ${res.status}`)
+				const data = await res.json()
+				return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+			} else {
+				// OpenAI 格式
+				const endpoint = url.endsWith('/chat/completions') ? url : `${url}/chat/completions`
+				const messages = [
+					{ role: 'system', content: sysPrompt },
+					...msgs
+				]
+
+				const res = await fetch(endpoint, {
+					method: 'POST',
+					headers: {
+						...headers,
+						Authorization: `Bearer ${key}`,
+					},
+					body: JSON.stringify({
+						model,
+						messages,
+						temperature: 0.6,
+						max_tokens: 4096
+					})
+				})
+
+				if (!res.ok) throw new Error(`OpenAI API Error: ${res.status}`)
+				const data = await res.json()
+				return data.choices?.[0]?.message?.content || ''
+			}
+		}
+
+		// --- 执行引擎 ---
+
+		/**
+		 * 解析 AI 响应文本，并执行其中的 <render-html> 和 <execute-js> 标签内容。
+		 * @param {string} text - AI 返回的原始文本。
+		 */
+		async function parseAndExecute(text) {
+			const htmlRegex = /<render-html>([\S\s]*?)<\/render-html>/g
+			const jsRegex = /<execute-js>([\S\s]*?)<\/execute-js>/g
+
+			let hasHtml = false
+			let match
+
+			// 执行 HTML 更新
+			while ((match = htmlRegex.exec(text)) !== null) {
+				hasHtml = true
+				const [, htmlContent] = match
+				// 平滑更新，防止白屏闪烁（虽然完全替换body不可避免）
+				requestAnimationFrame(() => {
+					document.body.innerHTML = htmlContent
+				})
+			}
+
+			// 执行 JS
+			while ((match = jsRegex.exec(text)) !== null) {
+				const [, code] = match
+				// 稍微延迟确保 DOM 已渲染
+				if (hasHtml) await new Promise(r => setTimeout(r, 50))
+				await runJsWithAsyncEval(code)
+			}
+		}
+
+		/**
+		 * 使用 async_eval 安全地执行 JavaScript 代码。
+		 * @param {string} code - 要执行的 JS 代码字符串。
+		 */
+		async function runJsWithAsyncEval(code) {
+			try {
+				const { result, error } = await async_eval(code)
+				if (error) {
+					console.error('Script Error:', error)
+					// 仅捕获严重错误反馈给 AI
+					window.trigger(`[System Error]: ${error.message}`)
+				}
+			} catch (e) {
+				window.trigger(`[Critical Execution Error]: ${e.message}`)
+			}
+		}
+
+		// --- 全局交互函数 ---
+
+		/**
+		 * 全局触发器函数，用于从渲染的UI或执行的JS将事件/数据发送回AI控制器。
+		 * @param {*} data - 要发送给 AI 的数据。
+		 */
+		window.trigger = async (data) => {
+			console.log('⚡ Trigger:', data)
+
+			let content = ''
+
+			// 优化点：使用 Object(s) instanceof 代替 typeof
+			if (Object(data) instanceof String)
+				content = data
+			else try { // 尝试序列化，失败则强转
+				content = JSON.stringify(data)
+			} catch (e) {
+				content = String(data)
+			}
+
+
+			state.history.push({ role: 'user', content: `[Event Triggered]: ${content}` })
+			await runLoop()
+		}
+
+		// --- 工具函数 ---
+
+		/**
+		 * 显示一个状态提示消息 (Toast)。
+		 * @param {string} msg - 要显示的消息内容。
+		 * @param {boolean} isError - 如果为 true，则显示为错误样式，否则为普通信息样式。
+		 */
+		function showToast(msg, isError) {
+			els.toast.textContent = msg
+			els.toast.className = isError ? 'status-error' : 'status-info'
+			els.toast.style.display = 'block'
+
+			// 自动隐藏 Info 类型的 Toast
+			if (!isError) {
+				if (window.toastTimeout) clearTimeout(window.toastTimeout)
+				window.toastTimeout = setTimeout(hideToast, 4000)
+			}
+		}
+
+		/**
+		 * 隐藏状态提示消息。
+		 */
+		function hideToast() {
+			els.toast.style.display = 'none'
+		}
+	</script>
+</body>
+
+</html>
