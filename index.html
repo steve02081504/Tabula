@@ -369,14 +369,13 @@
 
 ### 可用工具
 1. <render-html>HTML内容</render-html>
-	- 这会**完全**替换 document.body.innerHTML。
-	- 你可以在其中包含用于 CSS 的 <style> 块或用于 JS 的 <script> 块，并使用 'trigger(data)' 将事件发送回 AI（即你自己）。
-	- 始终重写完整的 UI 状态，不要依赖先前存在的元素。
+  - 这会**完全**替换 document.body.innerHTML，你不能依赖先前存在的元素。
+  - 你可以在其中包含用于 CSS 的 <style> 块或用于 JS 的 <script> 块，并使用 'trigger(data)' 将事件发送回 AI（即你自己）。
 
 2. <execute-js>JS代码</execute-js>
-	- 不更新页面，在当前页面运行异步 JavaScript。
-	- 你可以使用 import from 'url' 语法加载外部文件如 \`https://esm.sh\`。
-	- 你会拿到执行结果，包括返回值、控制台输出等。
+  - 不更新页面，在当前页面运行异步 JavaScript。
+  - 你可以使用 import from 'url' 语法加载外部文件如 \`https://esm.sh\`。
+  - 你会拿到执行结果，包括返回值、控制台输出等。
 
 ### 语言适配
 - **关键：** 分析用户初始提示词的语言（例如：英语、中文、日语）。
@@ -384,8 +383,8 @@
 - 例如：如果用户用中文输入，UI **必须**显示为中文。
 
 ### UX 用户体验指南
-- 在进行长耗时操作（trigger调用/网络请求/计算）之前，请渲染一个“加载中/处理中”的状态界面。
-- 创建现代、简洁、响应式的界面。
+- 在进行长耗时操作（trigger调用/网络请求/计算）之前，显示一个“加载中/处理中”的状态弹窗。
+- 创建现代且响应式的界面。
 - 无论发生什么，确保页面上始终有逻辑或元素可以触发 'trigger(data)'。
 
 ### 输出格式
@@ -533,6 +532,34 @@
 		// --- 执行引擎 ---
 
 		/**
+		 * 激活 DOM 节点中的脚本和链接标签（支持 Element、DocumentFragment、Document）。
+		 * @param {Element|DocumentFragment|Document} node - 要激活的 DOM 节点。
+		 * @returns {Element|DocumentFragment|Document} - 激活后的 DOM 节点。
+		 */
+		function activateScripts(node) {
+			// 对于 Document 或 Element，直接在其上查询并激活
+			const root = node.nodeType === Node.DOCUMENT_NODE ? node : node.ownerDocument || document
+			const container = node.nodeType === Node.DOCUMENT_NODE ? node.documentElement : node
+
+			// 激活 script 标签
+			container.querySelectorAll('script').forEach(oldScript => {
+				const newScript = root.createElement('script')
+				for (const attr of oldScript.attributes)
+					newScript.setAttribute(attr.name, attr.value)
+				if (oldScript.textContent) newScript.text = oldScript.textContent
+				oldScript.parentNode.replaceChild(newScript, oldScript)
+			})
+			// 激活 link 标签
+			container.querySelectorAll('link').forEach(oldLink => {
+				const newLink = root.createElement('link')
+				for (const attr of oldLink.attributes)
+					newLink.setAttribute(attr.name, attr.value)
+				oldLink.parentNode.replaceChild(newLink, oldLink)
+			})
+
+			return node
+		}
+		/**
 		 * 解析 AI 响应文本，并执行其中的 <render-html> 和 <execute-js> 标签内容。
 		 * @param {string} text - AI 返回的原始文本。
 		 */
@@ -550,6 +577,7 @@
 				// 平滑更新，防止白屏闪烁（虽然完全替换body不可避免）
 				requestAnimationFrame(() => {
 					document.body.innerHTML = htmlContent
+					activateScripts(document.body)
 				})
 			}
 
